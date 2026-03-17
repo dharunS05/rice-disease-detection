@@ -17,7 +17,7 @@
 #   Upload trained_models/ files via the Space file manager or Git LFS.
 # ═══════════════════════════════════════════════════════════════════
 
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 # ── System dependencies ────────────────────────────────────────────
 # libgomp1    : required by LightGBM / some sklearn builds
