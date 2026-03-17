@@ -1,0 +1,145 @@
+# ═══════════════════════════════════════════════════════════════════════
+# Rice Disease Detection — Project Configuration
+# Anna University Final Year Project 2024–25
+# ═══════════════════════════════════════════════════════════════════════
+
+# ── General ─────────────────────────────────────────────────────────────
+seed: 42
+project_name: "Rice Disease Detection"
+
+# ── CNN (EfficientNetB0) Settings ────────────────────────────────────────
+cnn:
+  img_size: [224, 224]           # Height x Width
+  num_classes: 4
+  batch_size: 32
+
+  # Class names MUST stay in this alphabetical order.
+  # TensorFlow image_dataset_from_directory loads classes alphabetically.
+  # Changing this order will silently corrupt all predictions.
+  class_names:
+    - "Bacterial Leaf Blight"    # index 0
+    - "Brown Spot"               # index 1
+    - "Healthy Rice Leaf"        # index 2  ← HEALTHY_IDX
+    - "Leaf Blast"               # index 3  ← LEAF_BLAST_IDX (hardest class)
+
+  healthy_idx: 2                 # Used in fusion: cnn_risk = 1 - P(Healthy)
+  leaf_blast_idx: 3
+
+  # Focal loss parameters (CategoricalFocalCrossentropy)
+  focal_gamma: 2.0
+  focal_label_smoothing: 0.1
+  # Per-class alpha — ordered same as class_names above
+  focal_alpha: [0.15, 0.20, 0.10, 0.35]
+
+  # Training phases
+  phase1_epochs: 30
+  phase2_epochs: 20
+  lr_phase1: 0.0001
+  lr_phase2: 0.00001
+  unfreeze_top_n: 20             # Top N layers of EfficientNetB0 unfrozen in Phase 2
+
+  # Saved model filenames (place these inside trained_models/)
+  model_file: "rice_v3_efficientnet.keras"
+  tflite_file: "rice_v3.tflite"
+
+  # Grad-CAM
+  last_conv_layer: "top_conv"    # EfficientNetB0 last conv layer (7×7×1280)
+  gradcam_alpha: 0.45            # Overlay blend weight
+
+# ── LSTM (WeatherRiskLSTM) Settings ──────────────────────────────────────
+lstm:
+  input_size: 20                 # 20 features per timestep (H3 FIX: includes district_id_norm)
+  hidden_size: 64
+  num_layers: 2
+  dropout: 0.5
+  lookback: 14                   # 14-day rolling window
+
+  # Classifier head inside LSTM
+  head_hidden: 32
+  head_dropout: 0.3
+
+  # Training
+  epochs: 60
+  early_stop_patience: 15
+  lr: 0.001
+  weight_decay: 0.0001
+  batch_size: 32
+  # Note: THRESHOLD=0.40 was used during training only for F1 computation.
+  # Inference returns raw sigmoid scores; no threshold is applied.
+
+  # Saved model filename (place inside trained_models/)
+  model_file: "best_lstm_v2.pth"
+  scaler_file: "scaler.pkl"      # MinMaxScaler fitted on training data
+
+  # 20 features in exact order used during training / scaling
+  feature_cols:
+    - "weather_code"
+    - "temperature_2m_max"
+    - "temperature_2m_min"
+    - "precipitation_sum"
+    - "rain_sum"
+    - "precipitation_hours"
+    - "et0_fao_evapotranspiration"
+    - "sunshine_duration"
+    - "wind_speed_10m_max"
+    - "wind_gusts_10m_max"
+    - "relative_humidity_2m_mean"
+    - "pressure_msl_mean"
+    - "soil_moisture_0_to_7cm_mean"
+    - "month_sin"
+    - "month_cos"
+    - "day_sin"
+    - "day_cos"
+    - "season"
+    - "precip_7d_sum"
+    - "district_id_norm"          # H3 FIX: district_id / 5.0
+
+  # Tamil Nadu districts (district_id / 5.0 = district_id_norm)
+  districts:
+    - {name: "Thanjavur",    lat: 10.79, lon: 79.14, district_id: 1}
+    - {name: "Nilgiris",     lat: 11.49, lon: 76.73, district_id: 2}
+    - {name: "Chennai",      lat: 13.08, lon: 80.27, district_id: 3}
+    - {name: "Virudhunagar", lat:  9.59, lon: 77.96, district_id: 4}
+    - {name: "Nagapattinam", lat: 10.77, lon: 79.84, district_id: 5}
+
+  # Risk label thresholds (from IRRI / Kim et al. 2018 / EPIRICE-SB 2020)
+  risk_thresholds:
+    brown_spot:
+      rh_min: 86
+      temp_min: 16
+      temp_max: 36
+      precip_max: 5        # drought stress OR
+      precip_hours_min: 8  # prolonged leaf wetness
+    leaf_blast:
+      rh_min: 90
+      temp_min: 17
+      temp_max: 28
+      precip_hours_min: 10
+      sunshine_max: 21600  # < 6 hours (seconds)
+    bacterial_blight:
+      rh_min: 70
+      temp_min: 25
+      temp_max: 34
+      precip_min: 20
+      wind_gusts_min: 35
+
+# ── Fusion Settings ───────────────────────────────────────────────────────
+fusion:
+  # Alpha validated via ablation grid search (Rice_Disease_Ablation_Study.ipynb)
+  # Fusion formula: fused = alpha * cnn_risk + (1-alpha) * lstm_sigmoid_score
+  # Where cnn_risk = 1 - P(Healthy)
+  # Grid searched over alpha ∈ {0.0, 0.1, …, 1.0} on validation set.
+  # Update alpha below after running the ablation notebook.
+  alpha: 0.4                     # placeholder — replace with ablation-validated value
+
+  # Interpretation bands for fused score [0, 1]
+  risk_bands:
+    low:      [0.0,  0.35]
+    moderate: [0.35, 0.65]
+    high:     [0.65, 1.0]
+
+# ── Paths ─────────────────────────────────────────────────────────────────
+paths:
+  trained_models_dir: "trained_models"
+  notebooks_dir: "notebooks"
+  tests_dir: "tests"

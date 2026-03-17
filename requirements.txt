@@ -1,0 +1,48 @@
+# ═══════════════════════════════════════════════════════════════════
+# Rice Disease Detection — Python Dependencies
+# Anna University Final Year Project 2024–25
+# ═══════════════════════════════════════════════════════════════════
+#
+# Install:
+#   pip install -r requirements.txt
+#
+# For GPU (PyTorch CUDA):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+
+# ── Deep Learning ────────────────────────────────────────────────────────────
+tensorflow>=2.13.0            # CNN (EfficientNetB0) + Focal Loss
+torch>=2.0.0                  # LSTM (WeatherRiskLSTM)
+torchvision>=0.15.0           # (required by torch ecosystem)
+
+# ── Data Processing ───────────────────────────────────────────────────────────
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.3.0           # MinMaxScaler, classification metrics
+
+# ── Image Handling ────────────────────────────────────────────────────────────
+Pillow>=10.0.0                # Image loading / resizing
+
+# ── Visualisation ─────────────────────────────────────────────────────────────
+matplotlib>=3.7.0             # Grad-CAM heatmap overlay (jet colormap)
+seaborn>=0.12.0               # Confusion matrix plots (training notebooks)
+
+# ── Configuration ─────────────────────────────────────────────────────────────
+PyYAML>=6.0                   # config.yaml parsing
+
+# ── Web API ───────────────────────────────────────────────────────────────────
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6       # required for file upload endpoints
+pyngrok>=7.0.0                # Colab tunnelling (harmless on HF Spaces too)
+
+# ── Hugging Face Spaces (demo app) ───────────────────────────────────────────
+gradio>=4.0.0                 # Hugging Face Spaces UI
+
+# ── Weather Data Collection ──────────────────────────────────────────────────
+openmeteo-requests>=0.2.0     # Open-Meteo historical weather API
+requests-cache>=1.1.0         # Cache API responses (used in LSTM notebook)
+retry-requests>=2.0.0         # Retry on network failure
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest>=7.4.0
+pytest-cov>=4.1.0             # Coverage reporting

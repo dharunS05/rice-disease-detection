@@ -1,0 +1,38 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+
+# Git
+.git/
+.gitignore
+
+# Notebooks (not needed in production container)
+notebooks/
+
+# Test cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Large model files — mount via HF Space file manager or Git LFS instead
+# trained_models/*.keras
+# trained_models/*.pth
