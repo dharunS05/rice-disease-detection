@@ -68,7 +68,79 @@ def load_cnn_model(model_path: str | Path) -> keras.Model:
         )
 
     print(f"[load_model] Loading CNN from: {model_path}")
-    model = keras.models.load_model(str(model_path))
+
+    # ── Keras version-safe loading ────────────────────────────────────────────
+    # Problem: model saved with Keras 3.x includes `quantization_config: None`
+    # in Dense layer config. Older Keras raises:
+    #   "Unrecognized keyword arguments passed to Dense: {'quantization_config': None}"
+    #
+    # Fix strategy — try 3 methods in order:
+    #   1. Normal load (works when versions match exactly)
+    #   2. Load with safe_mode=False (relaxes config strictness)
+    #   3. Rebuild architecture + load weights only (always works regardless of version)
+
+    model = None
+
+    # Method 1 — normal load
+    try:
+        model = keras.models.load_model(str(model_path))
+        print("[load_model] CNN loaded via method 1 (normal)")
+    except Exception as e1:
+        print(f"[load_model] Method 1 failed: {e1.__class__.__name__}: {str(e1)[:80]}")
+
+    # Method 2 — safe_mode=False
+    if model is None:
+        try:
+            model = keras.models.load_model(str(model_path), safe_mode=False)
+            print("[load_model] CNN loaded via method 2 (safe_mode=False)")
+        except Exception as e2:
+            print(f"[load_model] Method 2 failed: {e2.__class__.__name__}: {str(e2)[:80]}")
+
+    # Method 3 — rebuild architecture then load weights only
+    # This bypasses ALL config deserialization issues completely.
+    if model is None:
+        try:
+            print("[load_model] Trying method 3: rebuild architecture + load weights only")
+            from app.models.cnn_model import build_cnn_model, build_augmentation_layer
+            import tensorflow as tf
+            from tensorflow.keras.applications import EfficientNetB0
+            from tensorflow.keras import layers
+
+            # Rebuild exact same architecture as training notebook
+            data_augmentation = build_augmentation_layer()
+            base_model = EfficientNetB0(
+                input_shape=(224, 224, 3),
+                include_top=False,
+                weights=None,   # no imagenet weights needed — we load our own
+            )
+            base_model.trainable = True
+
+            inputs = keras.Input(shape=(224, 224, 3), name="image_input")
+            x = data_augmentation(inputs)
+            x = base_model(x, training=False)
+            x = layers.GlobalAveragePooling2D(name="gap")(x)
+            x = layers.Dropout(0.3, name="dropout_1")(x)
+            x = layers.Dense(
+                256, activation="relu",
+                kernel_regularizer=tf.keras.regularizers.l2(1e-4),
+                name="dense_256",
+            )(x)
+            x = layers.Dropout(0.2, name="dropout_2")(x)
+            outputs = layers.Dense(4, activation="softmax", name="classifier")(x)
+            model = keras.Model(inputs, outputs, name="RiceLeaf_v3_EfficientNetB0")
+
+            # Load only weights — skips all config/version checks
+            model.load_weights(str(model_path))
+            print("[load_model] CNN loaded via method 3 (weights only)")
+        except Exception as e3:
+            raise RuntimeError(
+                f"All 3 CNN load methods failed.\n"
+                f"Most likely cause: Keras version mismatch between training and deployment.\n"
+                f"Training Keras version must match requirements.txt exactly.\n"
+                f"Run in Colab: import keras; print(keras.__version__)\n"
+                f"Last error: {e3}"
+            ) from e3
+
     print(
         f"[load_model] CNN loaded — "
         f"input: {model.input_shape}  output: {model.output_shape}  "

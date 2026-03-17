@@ -10,7 +10,8 @@
 #   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
 
 # ── Deep Learning ────────────────────────────────────────────────────────────
-tensorflow>=2.13.0            # CNN (EfficientNetB0) + Focal Loss
+tensorflow==2.19.0            # PINNED — must match Colab training version
+keras==3.13.2                  # PINNED — must match TF version
 torch>=2.0.0                  # LSTM (WeatherRiskLSTM)
 torchvision>=0.15.0           # (required by torch ecosystem)
 
