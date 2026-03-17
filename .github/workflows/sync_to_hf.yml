@@ -9,72 +9,26 @@ jobs:
   sync-to-hf:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout full history
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-      - name: Install huggingface_hub
-        run: pip install huggingface_hub
+      - name: Install git-filter-repo
+        run: pip install git-filter-repo
 
-      - name: Sync code files only to HF Space
+      - name: Remove trained_models from this push only
+        run: |
+          # Remove trained_models from history in this temp workspace only
+          # Does NOT affect your GitHub repo — only this Action's local copy
+          git filter-repo --path trained_models --invert-paths --force
+
+      - name: Push code to Hugging Face
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          python << 'PYTHON'
-          import os
-          from huggingface_hub import HfApi
+          # Add HF remote
+          git remote add hf https://mlresearcher05:$HF_TOKEN@huggingface.co/spaces/mlresearcher05/rice-disease-detection
 
-          api = HfApi(token=os.environ["HF_TOKEN"])
-          REPO_ID = "mlresearcher05/rice-disease-detection"
-
-          # Files and folders to SKIP — models live on HF directly
-          SKIP = {
-              "trained_models",
-              ".git",
-              ".github",
-              "__pycache__",
-              ".pytest_cache",
-              ".env",
-              ".venv",
-          }
-          SKIP_EXTENSIONS = {".pyc", ".pyo", ".npy", ".keras", ".pth", ".pkl", ".h5", ".tflite"}
-
-          uploaded = []
-          skipped  = []
-
-          for root, dirs, files in os.walk("."):
-              # Remove skipped folders from traversal
-              dirs[:] = [d for d in dirs if d not in SKIP and not d.startswith(".")]
-
-              for filename in files:
-                  local_path = os.path.join(root, filename)
-                  # Clean up path: remove leading ./
-                  repo_path = local_path.lstrip("./").lstrip(".\\")
-                  repo_path = repo_path.replace("\\", "/")
-
-                  # Skip by extension
-                  ext = os.path.splitext(filename)[1].lower()
-                  if ext in SKIP_EXTENSIONS:
-                      skipped.append(repo_path)
-                      continue
-
-                  # Skip hidden files
-                  if filename.startswith("."):
-                      skipped.append(repo_path)
-                      continue
-
-                  # Upload file
-                  try:
-                      api.upload_file(
-                          path_or_fileobj=local_path,
-                          path_in_repo=repo_path,
-                          repo_id=REPO_ID,
-                          repo_type="space",
-                      )
-                      uploaded.append(repo_path)
-                      print(f"  ✓ {repo_path}")
-                  except Exception as e:
-                      print(f"  ✗ {repo_path} — {e}")
-
-          print(f"\n✅ Uploaded : {len(uploaded)} files")
-          print(f"⏭️  Skipped  : {len(skipped)} files (models/cache)")
-          PYTHON
+          # Push — HF receives a proper git push → triggers Docker rebuild
+          git push hf main --force
