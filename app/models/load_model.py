@@ -33,7 +33,7 @@ warnings.filterwarnings("ignore")
 # HF Hub config
 # ─────────────────────────────────────────────────────────────────────────────
 HF_MODEL_REPO  = "mlresearcher05/rice-disease-models"
-MODEL_CACHE_DIR = Path("/tmp/train_models")   # writable on HF Space
+MODEL_CACHE_DIR = Path("/tmp/rice_models")   # writable on HF Space
 
 
 def _download_from_hub(filename: str) -> Path:
@@ -107,7 +107,7 @@ def load_cnn_model(model_path: str | Path) -> keras.Model:
     Load EfficientNetB0 CNN.
     Downloads from HF Hub automatically if not found locally.
     """
-    resolved = _resolve_path(model_path, "rice_cnn_model.keras")
+    resolved = _resolve_path(model_path, "trained_models/rice_cnn_model.keras")
     print(f"[load_model] Loading CNN from: {resolved}")
 
     model = None
@@ -184,7 +184,7 @@ def load_lstm_model(
     Load WeatherRiskLSTM.
     Downloads from HF Hub automatically if not found locally.
     """
-    resolved = _resolve_path(model_path, "rice_lstm_model.pth")
+    resolved = _resolve_path(model_path, "trained_models/rice_lstm_model.pth")
 
     if device is None:
         device = get_device()
@@ -209,7 +209,7 @@ def load_scaler(scaler_path: str | Path) -> MinMaxScaler:
     Load MinMaxScaler.
     Downloads from HF Hub automatically if not found locally.
     """
-    resolved = _resolve_path(scaler_path, "scaler.pkl")
+    resolved = _resolve_path(scaler_path, "trained_models/scaler.pkl")
 
     print(f"[load_model] Loading scaler from: {resolved}")
     with open(resolved, "rb") as f:
