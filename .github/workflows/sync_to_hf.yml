@@ -14,10 +14,16 @@ jobs:
         with:
           fetch-depth: 0
  
+      - name: Install git-filter-repo
+        run: pip install git-filter-repo
+ 
+      - name: Remove trained_models from history
+        run: |
+          git filter-repo --path trained_models --invert-paths --force
+ 
       - name: Push to Hugging Face
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           git remote add hf https://mlresearcher05:$HF_TOKEN@huggingface.co/spaces/mlresearcher05/rice-disease-detection
-          git config lfs.allowincompletepush true
           git push hf main --force
