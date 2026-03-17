@@ -33,7 +33,7 @@ warnings.filterwarnings("ignore")
 # HF Hub config
 # ─────────────────────────────────────────────────────────────────────────────
 HF_MODEL_REPO  = "mlresearcher05/rice-disease-models"
-MODEL_CACHE_DIR = Path("/tmp/rice_models")   # writable on HF Space
+MODEL_CACHE_DIR = Path("/tmp/train_models")   # writable on HF Space
 
 
 def _download_from_hub(filename: str) -> Path:
