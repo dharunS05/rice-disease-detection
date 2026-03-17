@@ -11,7 +11,7 @@
 
 # ── Deep Learning ────────────────────────────────────────────────────────────
 tensorflow==2.19.0            # PINNED — must match Colab training version
-keras==3.13.2                  # PINNED — must match TF version
+keras==3.13.2                  # PINNED — requires Python>=3.11 (Dockerfile updated)
 torch>=2.0.0                  # LSTM (WeatherRiskLSTM)
 torchvision>=0.15.0           # (required by torch ecosystem)
 
