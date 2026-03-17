@@ -39,7 +39,7 @@ cnn:
   unfreeze_top_n: 20             # Top N layers of EfficientNetB0 unfrozen in Phase 2
 
   # Saved model filenames (place these inside trained_models/)
-  model_file: "rice_v3_efficientnet.keras"
+  model_file: "rice_cnn_model.keras"
   tflite_file: "rice_v3.tflite"
 
   # Grad-CAM
@@ -68,7 +68,7 @@ lstm:
   # Inference returns raw sigmoid scores; no threshold is applied.
 
   # Saved model filename (place inside trained_models/)
-  model_file: "best_lstm_v2.pth"
+  model_file: "rice_lstm_model.pth"
   scaler_file: "scaler.pkl"      # MinMaxScaler fitted on training data
 
   # 20 features in exact order used during training / scaling
