@@ -38,6 +38,7 @@ pyngrok>=7.0.0                # Colab tunnelling (harmless on HF Spaces too)
 
 # ── Hugging Face Spaces (demo app) ───────────────────────────────────────────
 gradio>=4.0.0                 # Hugging Face Spaces UI
+huggingface_hub>=0.20.0       # Download models from HF Hub at startup
 
 # ── Weather Data Collection ──────────────────────────────────────────────────
 openmeteo-requests>=0.2.0     # Open-Meteo historical weather API

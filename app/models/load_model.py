@@ -1,17 +1,19 @@
 """
 app/models/load_model.py
 ========================
-Centralised model loading for CNN (TensorFlow/Keras) and LSTM (PyTorch).
+Model loading with automatic download from Hugging Face Hub.
 
-Usage
------
-    from app.models.load_model import load_cnn_model, load_lstm_model, get_device
+How it works
+------------
+1. At startup, models are downloaded from HF Hub into /tmp/rice_models/
+2. Models are cached — if already downloaded, skip download
+3. Local trained_models/ folder is NOT needed on HF Space at all
 
-    cnn  = load_cnn_model("trained_models/rice_cnn_model.keras")
-    lstm, device = load_lstm_model("trained_models/rice_lstm_model.pth")
-
-Models are loaded once at startup and reused across all requests.
-Do NOT reload models per request — it is slow and will crash on Hugging Face Spaces.
+HF Hub model repo : mlresearcher05/rice-disease-models
+Files in repo     :
+    rice_cnn_model.keras
+    rice_lstm_model.pth
+    scaler.pkl
 """
 
 import os
@@ -19,7 +21,6 @@ import pickle
 import warnings
 from pathlib import Path
 
-import numpy as np
 import torch
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow import keras
@@ -27,6 +28,65 @@ from tensorflow import keras
 from app.models.lstm_model import WeatherRiskLSTM
 
 warnings.filterwarnings("ignore")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HF Hub config
+# ─────────────────────────────────────────────────────────────────────────────
+HF_MODEL_REPO  = "mlresearcher05/rice-disease-models"
+MODEL_CACHE_DIR = Path("/tmp/rice_models")   # writable on HF Space
+
+
+def _download_from_hub(filename: str) -> Path:
+    """
+    Download a single file from HF Hub model repo into cache dir.
+    If already cached, skip download and return cached path.
+
+    Args:
+        filename: e.g. "rice_cnn_model.keras"
+
+    Returns:
+        Local path to the downloaded file.
+    """
+    from huggingface_hub import hf_hub_download
+
+    cached_path = MODEL_CACHE_DIR / filename
+    MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+    if cached_path.exists():
+        print(f"[load_model] Using cached: {cached_path}")
+        return cached_path
+
+    print(f"[load_model] Downloading {filename} from {HF_MODEL_REPO} ...")
+    downloaded = hf_hub_download(
+        repo_id   = HF_MODEL_REPO,
+        filename  = filename,
+        repo_type = "model",
+        local_dir = str(MODEL_CACHE_DIR),
+    )
+    print(f"[load_model] Downloaded → {downloaded}")
+    return Path(downloaded)
+
+
+def _resolve_path(model_path: str | Path, hf_filename: str) -> Path:
+    """
+    Resolve model path:
+    - If local path exists → use it directly (local dev / Colab)
+    - If not → download from HF Hub (HF Space deployment)
+
+    Args:
+        model_path  : Path from config.yaml (e.g. trained_models/rice_cnn_model.keras)
+        hf_filename : Filename in HF Hub repo (e.g. rice_cnn_model.keras)
+
+    Returns:
+        Resolved local Path ready to load.
+    """
+    local = Path(model_path)
+    if local.exists():
+        print(f"[load_model] Using local file: {local}")
+        return local
+
+    print(f"[load_model] Local path not found: {local} — downloading from HF Hub")
+    return _download_from_hub(hf_filename)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -44,46 +104,17 @@ def get_device() -> torch.device:
 # ─────────────────────────────────────────────────────────────────────────────
 def load_cnn_model(model_path: str | Path) -> keras.Model:
     """
-    Load the trained EfficientNetB0 Keras model from disk.
-
-    Supports both .keras and legacy .h5 formats.
-    The model contains the CategoricalFocalCrossentropy loss inside it —
-    custom_objects are NOT needed because TF 2.x serialises built-in losses.
-
-    Args:
-        model_path: Path to the saved .keras or .h5 file.
-
-    Returns:
-        Compiled keras.Model ready for inference.
-
-    Raises:
-        FileNotFoundError: If the model file does not exist.
+    Load EfficientNetB0 CNN.
+    Downloads from HF Hub automatically if not found locally.
     """
-    model_path = Path(model_path)
-    if not model_path.exists():
-        raise FileNotFoundError(
-            f"CNN model not found at: {model_path}\n"
-            "Train the model first using notebooks/training_experiments.ipynb "
-            "and copy the output to trained_models/."
-        )
-
-    print(f"[load_model] Loading CNN from: {model_path}")
-
-    # ── Keras version-safe loading ────────────────────────────────────────────
-    # Problem: model saved with Keras 3.x includes `quantization_config: None`
-    # in Dense layer config. Older Keras raises:
-    #   "Unrecognized keyword arguments passed to Dense: {'quantization_config': None}"
-    #
-    # Fix strategy — try 3 methods in order:
-    #   1. Normal load (works when versions match exactly)
-    #   2. Load with safe_mode=False (relaxes config strictness)
-    #   3. Rebuild architecture + load weights only (always works regardless of version)
+    resolved = _resolve_path(model_path, "rice_cnn_model.keras")
+    print(f"[load_model] Loading CNN from: {resolved}")
 
     model = None
 
     # Method 1 — normal load
     try:
-        model = keras.models.load_model(str(model_path))
+        model = keras.models.load_model(str(resolved))
         print("[load_model] CNN loaded via method 1 (normal)")
     except Exception as e1:
         print(f"[load_model] Method 1 failed: {e1.__class__.__name__}: {str(e1)[:80]}")
@@ -91,30 +122,27 @@ def load_cnn_model(model_path: str | Path) -> keras.Model:
     # Method 2 — safe_mode=False
     if model is None:
         try:
-            model = keras.models.load_model(str(model_path), safe_mode=False)
+            model = keras.models.load_model(str(resolved), safe_mode=False)
             print("[load_model] CNN loaded via method 2 (safe_mode=False)")
         except Exception as e2:
             print(f"[load_model] Method 2 failed: {e2.__class__.__name__}: {str(e2)[:80]}")
 
-    # Method 3 — rebuild architecture then load weights only
-    # This bypasses ALL config deserialization issues completely.
+    # Method 3 — rebuild architecture + load weights only
     if model is None:
         try:
             print("[load_model] Trying method 3: rebuild architecture + load weights only")
-            from app.models.cnn_model import build_cnn_model, build_augmentation_layer
             import tensorflow as tf
-            from tensorflow.keras.applications import EfficientNetB0
             from tensorflow.keras import layers
+            from tensorflow.keras.applications import EfficientNetB0
+            from app.models.cnn_model import build_augmentation_layer
 
-            # Rebuild exact same architecture as training notebook
             data_augmentation = build_augmentation_layer()
             base_model = EfficientNetB0(
                 input_shape=(224, 224, 3),
                 include_top=False,
-                weights=None,   # no imagenet weights needed — we load our own
+                weights=None,
             )
             base_model.trainable = True
-
             inputs = keras.Input(shape=(224, 224, 3), name="image_input")
             x = data_augmentation(inputs)
             x = base_model(x, training=False)
@@ -128,21 +156,17 @@ def load_cnn_model(model_path: str | Path) -> keras.Model:
             x = layers.Dropout(0.2, name="dropout_2")(x)
             outputs = layers.Dense(4, activation="softmax", name="classifier")(x)
             model = keras.Model(inputs, outputs, name="RiceLeaf_v3_EfficientNetB0")
-
-            # Load only weights — skips all config/version checks
-            model.load_weights(str(model_path))
+            model.load_weights(str(resolved))
             print("[load_model] CNN loaded via method 3 (weights only)")
         except Exception as e3:
             raise RuntimeError(
                 f"All 3 CNN load methods failed.\n"
-                f"Most likely cause: Keras version mismatch between training and deployment.\n"
-                f"Training Keras version must match requirements.txt exactly.\n"
-                f"Run in Colab: import keras; print(keras.__version__)\n"
+                f"Keras version mismatch between training and deployment.\n"
                 f"Last error: {e3}"
             ) from e3
 
     print(
-        f"[load_model] CNN loaded — "
+        f"[load_model] CNN ready — "
         f"input: {model.input_shape}  output: {model.output_shape}  "
         f"params: {model.count_params():,}"
     )
@@ -157,42 +181,23 @@ def load_lstm_model(
     device: torch.device | None = None,
 ) -> tuple[WeatherRiskLSTM, torch.device]:
     """
-    Load the trained WeatherRiskLSTM from a PyTorch state dict.
-
-    The architecture (input_size=20) is hard-coded to match the saved weights.
-    Changing any architecture hyperparameter without retraining will raise a
-    RuntimeError at load time.
-
-    Args:
-        model_path: Path to the .pth state dict file (best_lstm_v2.pth).
-        device    : Target device. Auto-detected if None.
-
-    Returns:
-        (model, device) tuple — model is set to eval() mode.
-
-    Raises:
-        FileNotFoundError: If the state dict file does not exist.
+    Load WeatherRiskLSTM.
+    Downloads from HF Hub automatically if not found locally.
     """
-    model_path = Path(model_path)
-    if not model_path.exists():
-        raise FileNotFoundError(
-            f"LSTM model not found at: {model_path}\n"
-            "Train the model first using notebooks/training_experiments.ipynb "
-            "and copy the output to trained_models/."
-        )
+    resolved = _resolve_path(model_path, "rice_lstm_model.pth")
 
     if device is None:
         device = get_device()
 
-    print(f"[load_model] Loading LSTM from: {model_path}")
+    print(f"[load_model] Loading LSTM from: {resolved}")
     model = WeatherRiskLSTM(input_size=20, hidden_size=64, num_layers=2, dropout=0.5)
-    state_dict = torch.load(str(model_path), map_location=device)
+    state_dict = torch.load(str(resolved), map_location=device)
     model.load_state_dict(state_dict)
     model.to(device)
     model.eval()
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"[load_model] LSTM loaded — trainable params: {n_params:,}  device: {device}")
+    print(f"[load_model] LSTM ready — params: {n_params:,}  device: {device}")
     return model, device
 
 
@@ -201,36 +206,21 @@ def load_lstm_model(
 # ─────────────────────────────────────────────────────────────────────────────
 def load_scaler(scaler_path: str | Path) -> MinMaxScaler:
     """
-    Load the MinMaxScaler fitted on the training weather data.
-
-    The scaler must be the SAME one used during preprocessing to avoid
-    data distribution mismatch at inference time.
-
-    Args:
-        scaler_path: Path to scaler.pkl.
-
-    Returns:
-        Fitted sklearn MinMaxScaler.
-
-    Raises:
-        FileNotFoundError: If the scaler file does not exist.
+    Load MinMaxScaler.
+    Downloads from HF Hub automatically if not found locally.
     """
-    scaler_path = Path(scaler_path)
-    if not scaler_path.exists():
-        raise FileNotFoundError(
-            f"Scaler not found at: {scaler_path}\n"
-            "Run the preprocessing pipeline in the LSTM notebook to generate scaler.pkl."
-        )
+    resolved = _resolve_path(scaler_path, "scaler.pkl")
 
-    with open(scaler_path, "rb") as f:
+    print(f"[load_model] Loading scaler from: {resolved}")
+    with open(resolved, "rb") as f:
         scaler = pickle.load(f)
 
-    print(f"[load_model] Scaler loaded from: {scaler_path}")
+    print(f"[load_model] Scaler ready")
     return scaler
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Combined loader (convenience for app startup)
+# Combined loader
 # ─────────────────────────────────────────────────────────────────────────────
 def load_all_models(
     cnn_path: str | Path,
@@ -238,27 +228,13 @@ def load_all_models(
     scaler_path: str | Path,
 ) -> dict:
     """
-    Load CNN, LSTM, and scaler in one call.  Intended for app startup.
-
-    Args:
-        cnn_path   : Path to .keras CNN model.
-        lstm_path  : Path to .pth LSTM state dict.
-        scaler_path: Path to scaler.pkl.
-
-    Returns:
-        dict with keys: "cnn", "lstm", "scaler", "device"
-
-    Example (in main.py):
-        models = load_all_models(
-            "trained_models/rice_cnn_model.keras",
-            "trained_models/rice_lstm_model.pth",
-            "trained_models/scaler.pkl",
-        )
+    Load all 3 models at startup.
+    Automatically downloads from HF Hub if not found locally.
     """
     device = get_device()
-    cnn = load_cnn_model(cnn_path)
-    lstm, device = load_lstm_model(lstm_path, device)
-    scaler = load_scaler(scaler_path)
+    cnn            = load_cnn_model(cnn_path)
+    lstm, device   = load_lstm_model(lstm_path, device)
+    scaler         = load_scaler(scaler_path)
 
     print("[load_model] All models loaded successfully.")
     return {"cnn": cnn, "lstm": lstm, "scaler": scaler, "device": device}

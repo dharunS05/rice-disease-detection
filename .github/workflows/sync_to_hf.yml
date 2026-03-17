@@ -9,26 +9,14 @@ jobs:
   sync-to-hf:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout full history
+      - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      - name: Install git-filter-repo
-        run: pip install git-filter-repo
-
-      - name: Remove trained_models from this push only
-        run: |
-          # Remove trained_models from history in this temp workspace only
-          # Does NOT affect your GitHub repo — only this Action's local copy
-          git filter-repo --path trained_models --invert-paths --force
-
-      - name: Push code to Hugging Face
+      - name: Push to Hugging Face
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          # Add HF remote
           git remote add hf https://mlresearcher05:$HF_TOKEN@huggingface.co/spaces/mlresearcher05/rice-disease-detection
-
-          # Push — HF receives a proper git push → triggers Docker rebuild
           git push hf main --force
